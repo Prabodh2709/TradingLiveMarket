@@ -101,13 +101,13 @@ class MarketDataManager:
             if self._subscribed_tokens:
                 self._sws.unsubscribe(
                     "unsub1",
-                    SmartWebSocketV2.LTP_MODE,
+                    SmartWebSocketV2.SNAP_QUOTE,
                     self._subscribed_tokens,
                 )
             self._subscribed_tokens = token_list
             self._sws.subscribe(
                 "sub1",
-                SmartWebSocketV2.LTP_MODE,
+                SmartWebSocketV2.SNAP_QUOTE,
                 token_list,
             )
         except Exception as e:
@@ -123,13 +123,24 @@ class MarketDataManager:
     def _on_open(self, wsapp) -> None:
         logger.info("Angel One WebSocket connected")
         if self._subscribed_tokens:
+            # #region agent log
+            import json as _dbg_json, time as _dbg_time
+            try:
+                with open("/Users/prabodh.shewalkar/Desktop/Personal/TradingLiveMarket/.cursor/debug-d38668.log", "a") as _f:
+                    _dbg_tokens_preview = []
+                    for tg in self._subscribed_tokens:
+                        _dbg_tokens_preview.append({"exchangeType": tg.get("exchangeType"), "token_count": len(tg.get("tokens", [])), "first_5_tokens": tg.get("tokens", [])[:5]})
+                    _f.write(_dbg_json.dumps({"sessionId":"d38668","hypothesisId":"H3","location":"websocket_manager.py:_on_open","message":"subscribing_tokens","data":{"token_groups":_dbg_tokens_preview},"timestamp":int(_dbg_time.time()*1000)}) + "\n")
+            except Exception:
+                pass
+            # #endregion
             self._sws.subscribe(
                 "sub1",
-                SmartWebSocketV2.LTP_MODE,
+                SmartWebSocketV2.SNAP_QUOTE,
                 self._subscribed_tokens,
             )
             logger.info(
-                "Subscribed to %d token groups",
+                "Subscribed to %d token groups in SNAP_QUOTE mode",
                 len(self._subscribed_tokens),
             )
 
@@ -138,9 +149,22 @@ class MarketDataManager:
         if not token:
             return
 
+        best_bid = 0.0
+        best_ask = 0.0
+        buy_data = message.get("best_5_buy_data") or []
+        sell_data = message.get("best_5_sell_data") or []
+        if buy_data:
+            best_bid = buy_data[0].get("price", 0) / 100
+        if sell_data:
+            best_ask = sell_data[0].get("price", 0) / 100
+
+        ltp = message.get("last_traded_price", 0) / 100
+
         price_data = {
             "token": token,
-            "ltp": message.get("last_traded_price", 0) / 100,
+            "ltp": ltp,
+            "best_bid": best_bid,
+            "best_ask": best_ask,
             "open": message.get("open_price_of_the_day", 0) / 100,
             "high": message.get("high_price_of_the_day", 0) / 100,
             "low": message.get("low_price_of_the_day", 0) / 100,
@@ -150,6 +174,17 @@ class MarketDataManager:
             "exchange_type": message.get("exchange_type", 0),
             "sequence": message.get("sequence_number", 0),
         }
+
+        # #region agent log
+        import json as _dbg_json, time as _dbg_time
+        _dbg_tick_count = len(self._latest_prices)
+        if _dbg_tick_count < 5 or _dbg_tick_count % 50 == 0:
+            try:
+                with open("/Users/prabodh.shewalkar/Desktop/Personal/TradingLiveMarket/.cursor/debug-d38668.log", "a") as _f:
+                    _f.write(_dbg_json.dumps({"sessionId":"d38668","hypothesisId":"H1","location":"websocket_manager.py:_on_data","message":"snap_quote_tick","data":{"token":token,"ltp":ltp,"best_bid":best_bid,"best_ask":best_ask,"mid_price": round((best_bid+best_ask)/2, 2) if best_bid > 0 and best_ask > 0 else None,"ltp_vs_mid_diff": round((best_bid+best_ask)/2 - ltp, 2) if best_bid > 0 and best_ask > 0 else None,"oi":price_data["oi"],"tick_count":_dbg_tick_count},"timestamp":int(_dbg_time.time()*1000)}) + "\n")
+            except Exception:
+                pass
+        # #endregion
 
         self._latest_prices[token] = price_data
 

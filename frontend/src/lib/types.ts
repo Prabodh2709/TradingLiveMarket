@@ -60,6 +60,8 @@ export interface OptionChain {
   expiry: string;
   available_expiries: string[];
   strikes: Record<string, OptionStrike>;
+  spot_price: number | null;
+  index_token: string;
 }
 
 export interface HistoryMeta {
@@ -81,6 +83,8 @@ export interface HistoryDetail {
 export interface TickData {
   token: string;
   ltp: number;
+  best_bid: number;
+  best_ask: number;
   open: number;
   high: number;
   low: number;

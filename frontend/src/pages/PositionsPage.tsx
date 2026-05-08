@@ -15,20 +15,20 @@ export default function PositionsPage() {
   });
 
   const handleSquareOff = async (pos: Position) => {
-    const wsLtp = prices[pos.token]?.ltp;
-    const ltp = wsLtp || pos.current_price;
-    if (!ltp) {
+    const wsPrice = prices[pos.token];
+    const sellPrice = wsPrice?.best_bid > 0 ? wsPrice.best_bid : (wsPrice?.ltp || pos.current_price);
+    if (!sellPrice) {
       alert("No price available for square-off");
       return;
     }
-    if (!confirm(`Square off ${pos.qty} lot(s) of ${pos.symbol} at ₹${ltp.toFixed(2)}?`)) {
+    if (!confirm(`Square off ${pos.qty} lot(s) of ${pos.symbol} at ₹${sellPrice.toFixed(2)}?`)) {
       return;
     }
     try {
       await api.trade.sell({
         token: pos.token,
         qty: pos.qty,
-        price: ltp,
+        price: sellPrice,
       });
       queryClient.invalidateQueries({ queryKey: ["portfolio"] });
     } catch (err) {
@@ -39,7 +39,10 @@ export default function PositionsPage() {
   const getPosition = (pos: Position): Position => {
     const wsPrice = prices[pos.token];
     if (wsPrice) {
-      const currentPrice = wsPrice.ltp;
+      let currentPrice = wsPrice.ltp;
+      if (wsPrice.best_bid > 0 && wsPrice.best_ask > 0) {
+        currentPrice = (wsPrice.best_bid + wsPrice.best_ask) / 2;
+      }
       const unrealizedPnl = (currentPrice - pos.avg_price) * pos.qty * pos.lot_size;
       return { ...pos, current_price: currentPrice, unrealized_pnl: unrealizedPnl };
     }

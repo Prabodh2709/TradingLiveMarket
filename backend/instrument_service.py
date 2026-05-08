@@ -19,6 +19,11 @@ INSTRUMENT_MASTER_URL = (
 
 SUPPORTED_NAMES = {"NIFTY", "BANKNIFTY"}
 
+INDEX_TOKENS: dict[str, str] = {
+    "NIFTY": "99926000",
+    "BANKNIFTY": "99926009",
+}
+
 _instruments_cache: dict = {}
 _option_chain_cache: dict = {}
 _last_fetch: Optional[datetime] = None
@@ -177,6 +182,11 @@ def get_tokens_for_subscription(name: str, expiry: str, strikes: Optional[list[f
             if opt_type in opts and opts[opt_type].get("token"):
                 tokens.append(opts[opt_type]["token"])
     return tokens
+
+
+def get_index_token(name: str) -> str:
+    """Return the Angel One token for the underlying index (NSE Cash segment)."""
+    return INDEX_TOKENS[name.upper()]
 
 
 def _parse_expiry(exp_str: str) -> datetime:
