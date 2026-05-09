@@ -1,12 +1,15 @@
+import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
 import { api } from "../lib/api";
 import { useAppStore } from "../store/useAppStore";
-import { XCircle } from "lucide-react";
+import { XCircle, Loader2 } from "lucide-react";
 import type { Position } from "../lib/types";
 
 export default function PositionsPage() {
   const queryClient = useQueryClient();
   const prices = useAppStore((s) => s.prices);
+  const [squaringOff, setSquaringOff] = useState<string | null>(null);
 
   const { data: portfolio, isLoading } = useQuery({
     queryKey: ["portfolio"],
@@ -14,26 +17,63 @@ export default function PositionsPage() {
     refetchInterval: 3000,
   });
 
-  const handleSquareOff = async (pos: Position) => {
-    const wsPrice = prices[pos.token];
-    const sellPrice = wsPrice?.best_bid > 0 ? wsPrice.best_bid : (wsPrice?.ltp || pos.current_price);
-    if (!sellPrice) {
-      alert("No price available for square-off");
-      return;
-    }
-    if (!confirm(`Square off ${pos.qty} lot(s) of ${pos.symbol} at ₹${sellPrice.toFixed(2)}?`)) {
-      return;
-    }
+  const executeSquareOff = async (pos: Position, squareOffPrice: number) => {
+    setSquaringOff(pos.token);
     try {
       await api.trade.sell({
         token: pos.token,
         qty: pos.qty,
-        price: sellPrice,
+        price: squareOffPrice,
       });
       queryClient.invalidateQueries({ queryKey: ["portfolio"] });
+      toast.success(`Squared off ${pos.qty} lot(s) of ${pos.symbol}`);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Square-off failed");
+      toast.error(err instanceof Error ? err.message : "Square-off failed");
+    } finally {
+      setSquaringOff(null);
     }
+  };
+
+  const handleSquareOff = (pos: Position) => {
+    if (squaringOff) return;
+    const wsPrice = prices[pos.token];
+    const squareOffPrice =
+      pos.side === "SHORT"
+        ? (wsPrice?.best_ask > 0 ? wsPrice.best_ask : (wsPrice?.ltp || pos.current_price))
+        : (wsPrice?.best_bid > 0 ? wsPrice.best_bid : (wsPrice?.ltp || pos.current_price));
+    if (!squareOffPrice) {
+      toast.error("No price available for square-off");
+      return;
+    }
+    const sideLabel = pos.side === "SHORT" ? "SHORT" : "LONG";
+    toast(
+      (t) => (
+        <div className="flex flex-col gap-2">
+          <p className="text-sm">
+            Square off {sideLabel} {pos.qty} lot(s) of {pos.symbol} at
+            ₹{squareOffPrice.toFixed(2)}?
+          </p>
+          <div className="flex gap-2">
+            <button
+              className="px-3 py-1 bg-red-600 text-white rounded text-xs font-medium"
+              onClick={() => {
+                toast.dismiss(t.id);
+                executeSquareOff(pos, squareOffPrice);
+              }}
+            >
+              Confirm
+            </button>
+            <button
+              className="px-3 py-1 bg-gray-600 text-white rounded text-xs font-medium"
+              onClick={() => toast.dismiss(t.id)}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ),
+      { duration: 10000 },
+    );
   };
 
   const getPosition = (pos: Position): Position => {
@@ -43,7 +83,8 @@ export default function PositionsPage() {
       if (wsPrice.best_bid > 0 && wsPrice.best_ask > 0) {
         currentPrice = (wsPrice.best_bid + wsPrice.best_ask) / 2;
       }
-      const unrealizedPnl = (currentPrice - pos.avg_price) * pos.qty * pos.lot_size;
+      const multiplier = pos.side === "SHORT" ? -1 : 1;
+      const unrealizedPnl = multiplier * (currentPrice - pos.avg_price) * pos.qty * pos.lot_size;
       return { ...pos, current_price: currentPrice, unrealized_pnl: unrealizedPnl };
     }
     return pos;
@@ -52,6 +93,7 @@ export default function PositionsPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64 text-gray-500">
+        <Loader2 size={24} className="animate-spin mr-3" />
         Loading positions...
       </div>
     );
@@ -78,7 +120,8 @@ export default function PositionsPage() {
                 <tr className="text-gray-500 border-b border-gray-800">
                   <th className="text-left px-5 py-3 font-medium">Symbol</th>
                   <th className="text-center px-5 py-3 font-medium">Type</th>
-                  <th className="text-right px-5 py-3 font-medium">Lots</th>
+                  <th className="text-center px-5 py-3 font-medium">Side</th>
+                  <th className="text-right px-5 py-3 font-medium">Qty</th>
                   <th className="text-right px-5 py-3 font-medium">
                     Avg Price
                   </th>
@@ -117,7 +160,21 @@ export default function PositionsPage() {
                           {pos.option_type}
                         </span>
                       </td>
-                      <td className="text-right px-5 py-3">{pos.qty}</td>
+                      <td className="text-center px-5 py-3">
+                        <span
+                          className={`px-2 py-0.5 rounded text-xs font-medium ${
+                            pos.side === "SHORT"
+                              ? "bg-orange-500/10 text-orange-400"
+                              : "bg-blue-500/10 text-blue-400"
+                          }`}
+                        >
+                          {pos.side}
+                        </span>
+                      </td>
+                      <td className="text-right px-5 py-3">
+                        <div className="font-medium">{pos.qty} lot{pos.qty > 1 ? "s" : ""}</div>
+                        <div className="text-xs text-gray-500">{pos.qty * pos.lot_size} qty</div>
+                      </td>
                       <td className="text-right px-5 py-3 font-mono">
                         &#8377;{pos.avg_price.toFixed(2)}
                       </td>
@@ -131,10 +188,21 @@ export default function PositionsPage() {
                       <td className="text-center px-5 py-3">
                         <button
                           onClick={() => handleSquareOff(pos)}
-                          className="inline-flex items-center gap-1 bg-red-600/20 hover:bg-red-600/40 text-red-400 px-3 py-1.5 rounded text-xs font-medium"
+                          disabled={!!squaringOff}
+                          className={`inline-flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                            squaringOff === pos.token
+                              ? "bg-red-600/40 text-red-300"
+                              : squaringOff
+                              ? "bg-red-600/10 text-red-600 cursor-not-allowed"
+                              : "bg-red-600/20 hover:bg-red-600/40 text-red-400"
+                          }`}
                         >
-                          <XCircle size={14} />
-                          Square Off
+                          {squaringOff === pos.token ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : (
+                            <XCircle size={14} />
+                          )}
+                          {squaringOff === pos.token ? "Closing..." : "Square Off"}
                         </button>
                       </td>
                     </tr>

@@ -1,9 +1,193 @@
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef, memo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
 import { api } from "../lib/api";
 import { useAppStore } from "../store/useAppStore";
-import { RefreshCw, ShoppingCart } from "lucide-react";
-import type { OptionContract } from "../lib/types";
+import { RefreshCw, ShoppingCart, TrendingDown, Loader2 } from "lucide-react";
+import type { OptionContract, TickData } from "../lib/types";
+
+const LOT_SIZES: Record<string, number> = { NIFTY: 65, BANKNIFTY: 30 };
+
+function formatOi(oi: number | null) {
+  if (oi == null || oi === 0) return "--";
+  if (oi >= 10000000) return (oi / 10000000).toFixed(2) + " Cr";
+  if (oi >= 100000) return (oi / 100000).toFixed(2) + " L";
+  if (oi >= 1000) return (oi / 1000).toFixed(1) + "K";
+  return oi.toString();
+}
+
+function getLtpFromTick(
+  contract: OptionContract | undefined,
+  tick: TickData | undefined,
+): number | null {
+  if (!contract) return null;
+  if (tick) return tick.ltp;
+  return contract.ltp;
+}
+
+interface StrikeRowProps {
+  strike: string;
+  ce: OptionContract | undefined;
+  pe: OptionContract | undefined;
+  isAtm: boolean;
+  pendingAction: string | null;
+  onBuy: (contract: OptionContract, optionType: "CE" | "PE") => void;
+  onSell: (contract: OptionContract, optionType: "CE" | "PE") => void;
+  atmRowRef: React.RefObject<HTMLTableRowElement | null>;
+}
+
+const StrikeRow = memo(function StrikeRow({
+  strike,
+  ce,
+  pe,
+  isAtm,
+  pendingAction,
+  onBuy,
+  onSell,
+  atmRowRef,
+}: StrikeRowProps) {
+  const ceTick = useAppStore((s) => (ce ? s.prices[ce.token] : undefined));
+  const peTick = useAppStore((s) => (pe ? s.prices[pe.token] : undefined));
+
+  const cePrice = getLtpFromTick(ce, ceTick);
+  const pePrice = getLtpFromTick(pe, peTick);
+  const ceOi = ceTick?.oi ?? null;
+  const peOi = peTick?.oi ?? null;
+
+  return (
+    <tr
+      ref={isAtm ? atmRowRef : undefined}
+      className={`border-b border-gray-800/50 hover:bg-gray-800/20 ${
+        isAtm ? "bg-yellow-500/10 ring-1 ring-inset ring-yellow-500/30" : ""
+      }`}
+    >
+      <td className="px-2 py-2 text-right bg-green-500/5 text-xs text-gray-500 font-mono">
+        {formatOi(ceOi)}
+      </td>
+      <td className="px-2 py-2 text-right bg-green-500/5 font-mono">
+        {cePrice != null ? (
+          <span className="text-green-300">{cePrice.toFixed(2)}</span>
+        ) : (
+          <span className="text-gray-600">--</span>
+        )}
+      </td>
+      <td className="px-1 py-1.5 text-center bg-green-500/5">
+        {ce && cePrice ? (
+          <button
+            onClick={() => onBuy(ce, "CE")}
+            disabled={!!pendingAction}
+            className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
+              pendingAction === `buy-${ce.token}`
+                ? "bg-green-600/40 text-green-300"
+                : pendingAction
+                ? "bg-green-600/10 text-green-600 cursor-not-allowed"
+                : "bg-green-600/20 hover:bg-green-600/40 text-green-400"
+            }`}
+            title="Buy CE"
+          >
+            {pendingAction === `buy-${ce.token}` ? (
+              <Loader2 size={11} className="animate-spin" />
+            ) : (
+              <ShoppingCart size={11} />
+            )}
+            B
+          </button>
+        ) : null}
+      </td>
+      <td className="px-1 py-1.5 text-center bg-green-500/5">
+        {ce && cePrice ? (
+          <button
+            onClick={() => onSell(ce, "CE")}
+            disabled={!!pendingAction}
+            className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
+              pendingAction === `sell-${ce.token}`
+                ? "bg-orange-600/40 text-orange-300"
+                : pendingAction
+                ? "bg-orange-600/10 text-orange-600 cursor-not-allowed"
+                : "bg-orange-600/20 hover:bg-orange-600/40 text-orange-400"
+            }`}
+            title="Sell CE"
+          >
+            {pendingAction === `sell-${ce.token}` ? (
+              <Loader2 size={11} className="animate-spin" />
+            ) : (
+              <TrendingDown size={11} />
+            )}
+            S
+          </button>
+        ) : null}
+      </td>
+      <td
+        className={`px-4 py-2 text-center font-bold bg-gray-800/50 ${
+          isAtm ? "text-yellow-300" : "text-gray-300"
+        }`}
+      >
+        {parseFloat(strike).toFixed(0)}
+        {isAtm && (
+          <span className="ml-1 text-[10px] text-yellow-400/70 font-normal">
+            ATM
+          </span>
+        )}
+      </td>
+      <td className="px-1 py-1.5 text-center bg-red-500/5">
+        {pe && pePrice ? (
+          <button
+            onClick={() => onBuy(pe, "PE")}
+            disabled={!!pendingAction}
+            className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
+              pendingAction === `buy-${pe.token}`
+                ? "bg-red-600/40 text-red-300"
+                : pendingAction
+                ? "bg-red-600/10 text-red-600 cursor-not-allowed"
+                : "bg-red-600/20 hover:bg-red-600/40 text-red-400"
+            }`}
+            title="Buy PE"
+          >
+            {pendingAction === `buy-${pe.token}` ? (
+              <Loader2 size={11} className="animate-spin" />
+            ) : (
+              <ShoppingCart size={11} />
+            )}
+            B
+          </button>
+        ) : null}
+      </td>
+      <td className="px-1 py-1.5 text-center bg-red-500/5">
+        {pe && pePrice ? (
+          <button
+            onClick={() => onSell(pe, "PE")}
+            disabled={!!pendingAction}
+            className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
+              pendingAction === `sell-${pe.token}`
+                ? "bg-orange-600/40 text-orange-300"
+                : pendingAction
+                ? "bg-orange-600/10 text-orange-600 cursor-not-allowed"
+                : "bg-orange-600/20 hover:bg-orange-600/40 text-orange-400"
+            }`}
+            title="Sell PE"
+          >
+            {pendingAction === `sell-${pe.token}` ? (
+              <Loader2 size={11} className="animate-spin" />
+            ) : (
+              <TrendingDown size={11} />
+            )}
+            S
+          </button>
+        ) : null}
+      </td>
+      <td className="px-2 py-2 text-left bg-red-500/5 font-mono">
+        {pePrice != null ? (
+          <span className="text-red-300">{pePrice.toFixed(2)}</span>
+        ) : (
+          <span className="text-gray-600">--</span>
+        )}
+      </td>
+      <td className="px-2 py-2 text-left bg-red-500/5 text-xs text-gray-500 font-mono">
+        {formatOi(peOi)}
+      </td>
+    </tr>
+  );
+});
 
 export default function OptionChainPage() {
   const queryClient = useQueryClient();
@@ -11,10 +195,10 @@ export default function OptionChainPage() {
   const setSelectedIndex = useAppStore((s) => s.setSelectedIndex);
   const selectedExpiry = useAppStore((s) => s.selectedExpiry);
   const setSelectedExpiry = useAppStore((s) => s.setSelectedExpiry);
-  const prices = useAppStore((s) => s.prices);
 
   const [refreshing, setRefreshing] = useState(false);
   const [buyQty, setBuyQty] = useState(1);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
 
   const {
     data: chain,
@@ -22,9 +206,12 @@ export default function OptionChainPage() {
     refetch,
   } = useQuery({
     queryKey: ["option-chain", selectedIndex, selectedExpiry],
-    queryFn: () => api.instruments.optionChain(selectedIndex, selectedExpiry || undefined),
+    queryFn: () =>
+      api.instruments.optionChain(selectedIndex, selectedExpiry || undefined),
     enabled: true,
-    retry: false,
+    retry: 2,
+    retryDelay: 1000,
+    staleTime: 5 * 60 * 1000,
   });
 
   useEffect(() => {
@@ -39,7 +226,7 @@ export default function OptionChainPage() {
       await api.instruments.refresh();
       refetch();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Refresh failed");
+      toast.error(err instanceof Error ? err.message : "Refresh failed");
     } finally {
       setRefreshing(false);
     }
@@ -58,59 +245,99 @@ export default function OptionChainPage() {
     if (selectedExpiry) handleSubscribe();
   }, [selectedExpiry, handleSubscribe]);
 
-  const handleBuy = async (contract: OptionContract, optionType: "CE" | "PE") => {
-    if (!chain) return;
-    const price = getLtp(contract);
-    if (!price) {
-      alert("No live price available");
-      return;
-    }
-    try {
-      await api.trade.buy({
-        symbol: contract.symbol,
-        token: contract.token,
-        name: selectedIndex,
-        strike: parseFloat(
-          Object.entries(chain.strikes).find(([_, s]) =>
-            s[optionType]?.token === contract.token
-          )?.[0] || "0"
-        ),
-        option_type: optionType,
-        expiry: chain.expiry,
-        qty: buyQty,
-        price,
-      });
-      queryClient.invalidateQueries({ queryKey: ["portfolio"] });
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Buy failed");
-    }
-  };
+  const handleBuy = useCallback(
+    async (contract: OptionContract, optionType: "CE" | "PE") => {
+      if (!chain || pendingAction) return;
+      const prices = useAppStore.getState().prices;
+      const tick = prices[contract.token];
+      const price = tick ? tick.ltp : contract.ltp;
+      if (!price) {
+        toast.error("No live price available");
+        return;
+      }
+      const strikeVal = parseFloat(
+        Object.entries(chain.strikes).find(
+          ([, s]) => s[optionType]?.token === contract.token,
+        )?.[0] || "0",
+      );
+      const actionKey = `buy-${contract.token}`;
+      setPendingAction(actionKey);
+      try {
+        await api.trade.buy({
+          symbol: contract.symbol,
+          token: contract.token,
+          name: selectedIndex,
+          strike: strikeVal,
+          option_type: optionType,
+          expiry: chain.expiry,
+          qty: buyQty,
+          price,
+        });
+        queryClient.invalidateQueries({ queryKey: ["portfolio"] });
+        toast.success(`Bought ${buyQty} lot(s) of ${contract.symbol}`);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Buy failed");
+      } finally {
+        setPendingAction(null);
+      }
+    },
+    [chain, pendingAction, selectedIndex, buyQty, queryClient],
+  );
 
-  const getLtp = (contract: OptionContract | undefined): number | null => {
-    if (!contract) return null;
-    const wsPrice = prices[contract.token];
-    if (wsPrice) {
-      return wsPrice.ltp;
-    }
-    return contract.ltp;
-  };
+  const handleSell = useCallback(
+    async (contract: OptionContract, optionType: "CE" | "PE") => {
+      if (!chain || pendingAction) return;
+      const prices = useAppStore.getState().prices;
+      const tick = prices[contract.token];
+      const price =
+        tick?.best_bid > 0
+          ? tick.best_bid
+          : tick
+          ? tick.ltp
+          : contract.ltp;
+      if (!price) {
+        toast.error("No live price available");
+        return;
+      }
+      const strikeVal = parseFloat(
+        Object.entries(chain.strikes).find(
+          ([, s]) => s[optionType]?.token === contract.token,
+        )?.[0] || "0",
+      );
+      const actionKey = `sell-${contract.token}`;
+      setPendingAction(actionKey);
+      try {
+        await api.trade.sellOpen({
+          symbol: contract.symbol,
+          token: contract.token,
+          name: selectedIndex,
+          strike: strikeVal,
+          option_type: optionType,
+          expiry: chain.expiry,
+          qty: buyQty,
+          price,
+        });
+        queryClient.invalidateQueries({ queryKey: ["portfolio"] });
+        toast.success(`Sold ${buyQty} lot(s) of ${contract.symbol}`);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Sell failed");
+      } finally {
+        setPendingAction(null);
+      }
+    },
+    [chain, pendingAction, selectedIndex, buyQty, queryClient],
+  );
 
-  const getOi = (contract: OptionContract | undefined): number | null => {
-    if (!contract) return null;
-    const wsPrice = prices[contract.token];
-    return wsPrice?.oi ?? null;
-  };
-
-  const spotPrice = chain
-    ? prices[chain.index_token]?.ltp ?? chain.spot_price
-    : null;
+  const spotPrice = useAppStore((s) =>
+    chain ? (s.prices[chain.index_token]?.ltp ?? chain.spot_price) : null,
+  );
 
   const atmStrike = useMemo(() => {
     if (!spotPrice || !chain) return null;
     const strikes = Object.keys(chain.strikes).map(Number);
     if (strikes.length === 0) return null;
     return strikes.reduce((prev, curr) =>
-      Math.abs(curr - spotPrice) < Math.abs(prev - spotPrice) ? curr : prev
+      Math.abs(curr - spotPrice) < Math.abs(prev - spotPrice) ? curr : prev,
     );
   }, [spotPrice, chain]);
 
@@ -119,7 +346,10 @@ export default function OptionChainPage() {
 
   useEffect(() => {
     if (atmRowRef.current && !hasScrolled.current) {
-      atmRowRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      atmRowRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
       hasScrolled.current = true;
     }
   }, [atmStrike]);
@@ -127,34 +357,6 @@ export default function OptionChainPage() {
   useEffect(() => {
     hasScrolled.current = false;
   }, [selectedIndex, selectedExpiry]);
-
-  // #region agent log
-  useEffect(() => {
-    if (!chain) return;
-    const allEntries = Object.entries(chain.strikes);
-    const mid = Math.floor(allEntries.length / 2);
-    const atmEntries = allEntries.slice(Math.max(0, mid - 3), mid + 3);
-    const firstEntries = allEntries.slice(0, 2);
-    const sampleEntries = [...firstEntries, ...atmEntries];
-    const samples = sampleEntries.map(([strike, data]) => {
-      const ceWs = data.CE ? prices[data.CE.token] : null;
-      const peWs = data.PE ? prices[data.PE.token] : null;
-      const ceMid = ceWs && ceWs.best_bid > 0 && ceWs.best_ask > 0 ? (ceWs.best_bid + ceWs.best_ask) / 2 : null;
-      const peMid = peWs && peWs.best_bid > 0 && peWs.best_ask > 0 ? (peWs.best_bid + peWs.best_ask) / 2 : null;
-      const ceDisplayed = getLtp(data.CE);
-      const peDisplayed = getLtp(data.PE);
-      return {
-        strike,
-        ce_actual_ltp: ceWs?.ltp, ce_mid: ceMid?.toFixed(2), ce_displayed: ceDisplayed?.toFixed(2), ce_ltp_vs_mid_diff: ceMid && ceWs?.ltp ? (ceMid - ceWs.ltp).toFixed(2) : null,
-        pe_actual_ltp: peWs?.ltp, pe_mid: peMid?.toFixed(2), pe_displayed: peDisplayed?.toFixed(2), pe_ltp_vs_mid_diff: peMid && peWs?.ltp ? (peMid - peWs.ltp).toFixed(2) : null,
-        ce_oi: ceWs?.oi, pe_oi: peWs?.oi,
-      };
-    });
-    if (Object.keys(prices).length > 100) {
-      fetch('http://127.0.0.1:7432/ingest/4b8cbc52-306c-4d35-811a-7a74e1cad4e5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d38668'},body:JSON.stringify({sessionId:'d38668',hypothesisId:'H1',location:'OptionChainPage.tsx',message:'ltp_vs_midprice_comparison',data:{total_strikes:allEntries.length,sample_strikes:samples,total_price_entries:Object.keys(prices).length},timestamp:Date.now()})}).catch(()=>{});
-    }
-  }, [chain, prices]);
-  // #endregion
 
   return (
     <div>
@@ -168,16 +370,24 @@ export default function OptionChainPage() {
               min={1}
               max={100}
               value={buyQty}
-              onChange={(e) => setBuyQty(Math.max(1, parseInt(e.target.value) || 1))}
+              onChange={(e) =>
+                setBuyQty(Math.max(1, parseInt(e.target.value) || 1))
+              }
               className="w-16 text-center text-sm"
             />
+            <span className="text-gray-600 text-xs font-mono">
+              = {buyQty * (LOT_SIZES[selectedIndex] ?? 25)} qty
+            </span>
           </div>
           <button
             onClick={handleRefreshInstruments}
             disabled={refreshing}
             className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-2 rounded-lg text-sm"
           >
-            <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
+            <RefreshCw
+              size={14}
+              className={refreshing ? "animate-spin" : ""}
+            />
             Refresh
           </button>
         </div>
@@ -221,7 +431,10 @@ export default function OptionChainPage() {
           <div className="ml-auto flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-1.5">
             <span className="text-xs text-gray-500">SPOT</span>
             <span className="text-sm font-semibold text-yellow-300 font-mono">
-              {spotPrice.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {spotPrice.toLocaleString("en-IN", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
             </span>
           </div>
         )}
@@ -229,6 +442,7 @@ export default function OptionChainPage() {
 
       {isLoading ? (
         <div className="flex items-center justify-center h-64 text-gray-500">
+          <Loader2 size={24} className="animate-spin mr-3" />
           Loading option chain...
         </div>
       ) : !chain || Object.keys(chain.strikes).length === 0 ? (
@@ -248,7 +462,7 @@ export default function OptionChainPage() {
               <thead className="sticky top-0 z-10 bg-gray-900">
                 <tr className="border-b border-gray-800">
                   <th
-                    colSpan={3}
+                    colSpan={4}
                     className="text-center px-3 py-2.5 text-green-400 font-medium bg-green-500/5"
                   >
                     CALLS (CE)
@@ -257,7 +471,7 @@ export default function OptionChainPage() {
                     Strike
                   </th>
                   <th
-                    colSpan={3}
+                    colSpan={4}
                     className="text-center px-3 py-2.5 text-red-400 font-medium bg-red-500/5"
                   >
                     PUTS (PE)
@@ -266,92 +480,32 @@ export default function OptionChainPage() {
                 <tr className="border-b border-gray-800 text-gray-500 text-xs">
                   <th className="px-2 py-2 text-right bg-green-500/5">OI</th>
                   <th className="px-2 py-2 text-right bg-green-500/5">LTP</th>
-                  <th className="px-2 py-2 text-center bg-green-500/5">Buy</th>
+                  <th className="px-2 py-2 text-center bg-green-500/5">B</th>
+                  <th className="px-2 py-2 text-center bg-green-500/5">S</th>
                   <th className="px-3 py-2 text-center bg-gray-800/50"></th>
-                  <th className="px-2 py-2 text-center bg-red-500/5">Buy</th>
+                  <th className="px-2 py-2 text-center bg-red-500/5">B</th>
+                  <th className="px-2 py-2 text-center bg-red-500/5">S</th>
                   <th className="px-2 py-2 text-left bg-red-500/5">LTP</th>
                   <th className="px-2 py-2 text-left bg-red-500/5">OI</th>
                 </tr>
               </thead>
               <tbody>
-                {Object.entries(chain.strikes).map(([strike, data]) => {
-                  const ce = data.CE;
-                  const pe = data.PE;
-                  const cePrice = getLtp(ce);
-                  const pePrice = getLtp(pe);
-                  const ceOi = getOi(ce);
-                  const peOi = getOi(pe);
-                  const isAtm = atmStrike != null && parseFloat(strike) === atmStrike;
-
-                  const formatOi = (oi: number | null) => {
-                    if (oi == null || oi === 0) return "--";
-                    if (oi >= 10000000) return (oi / 10000000).toFixed(2) + " Cr";
-                    if (oi >= 100000) return (oi / 100000).toFixed(2) + " L";
-                    if (oi >= 1000) return (oi / 1000).toFixed(1) + "K";
-                    return oi.toString();
-                  };
-
-                  return (
-                    <tr
-                      key={strike}
-                      ref={isAtm ? atmRowRef : undefined}
-                      className={`border-b border-gray-800/50 hover:bg-gray-800/20 ${
-                        isAtm ? "bg-yellow-500/10 ring-1 ring-inset ring-yellow-500/30" : ""
-                      }`}
-                    >
-                      <td className="px-2 py-2 text-right bg-green-500/5 text-xs text-gray-500 font-mono">
-                        {formatOi(ceOi)}
-                      </td>
-                      <td className="px-2 py-2 text-right bg-green-500/5 font-mono">
-                        {cePrice != null ? (
-                          <span className="text-green-300">
-                            {cePrice.toFixed(2)}
-                          </span>
-                        ) : (
-                          <span className="text-gray-600">--</span>
-                        )}
-                      </td>
-                      <td className="px-2 py-1.5 text-center bg-green-500/5">
-                        {ce && cePrice ? (
-                          <button
-                            onClick={() => handleBuy(ce, "CE")}
-                            className="inline-flex items-center gap-1 bg-green-600/20 hover:bg-green-600/40 text-green-400 px-2 py-1 rounded text-xs"
-                          >
-                            <ShoppingCart size={12} />B
-                          </button>
-                        ) : null}
-                      </td>
-                      <td className={`px-4 py-2 text-center font-bold bg-gray-800/50 ${
-                        isAtm ? "text-yellow-300" : "text-gray-300"
-                      }`}>
-                        {parseFloat(strike).toFixed(0)}
-                        {isAtm && <span className="ml-1 text-[10px] text-yellow-400/70 font-normal">ATM</span>}
-                      </td>
-                      <td className="px-2 py-1.5 text-center bg-red-500/5">
-                        {pe && pePrice ? (
-                          <button
-                            onClick={() => handleBuy(pe, "PE")}
-                            className="inline-flex items-center gap-1 bg-red-600/20 hover:bg-red-600/40 text-red-400 px-2 py-1 rounded text-xs"
-                          >
-                            <ShoppingCart size={12} />B
-                          </button>
-                        ) : null}
-                      </td>
-                      <td className="px-2 py-2 text-left bg-red-500/5 font-mono">
-                        {pePrice != null ? (
-                          <span className="text-red-300">
-                            {pePrice.toFixed(2)}
-                          </span>
-                        ) : (
-                          <span className="text-gray-600">--</span>
-                        )}
-                      </td>
-                      <td className="px-2 py-2 text-left bg-red-500/5 text-xs text-gray-500 font-mono">
-                        {formatOi(peOi)}
-                      </td>
-                    </tr>
-                  );
-                })}
+                {Object.entries(chain.strikes).map(([strike, data]) => (
+                  <StrikeRow
+                    key={strike}
+                    strike={strike}
+                    ce={data.CE}
+                    pe={data.PE}
+                    isAtm={
+                      atmStrike != null &&
+                      parseFloat(strike) === atmStrike
+                    }
+                    pendingAction={pendingAction}
+                    onBuy={handleBuy}
+                    onSell={handleSell}
+                    atmRowRef={atmRowRef}
+                  />
+                ))}
               </tbody>
             </table>
           </div>

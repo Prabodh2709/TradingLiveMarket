@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
+import { Loader2 } from "lucide-react";
 
 export default function TradeHistoryPage() {
   const { data, isLoading } = useQuery({
@@ -11,6 +12,7 @@ export default function TradeHistoryPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64 text-gray-500">
+        <Loader2 size={24} className="animate-spin mr-3" />
         Loading trades...
       </div>
     );

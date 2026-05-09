@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from "react-router-dom";
+import { Toaster } from "react-hot-toast";
 import { useAppStore } from "./store/useAppStore";
 import { useMarketWebSocket } from "./lib/useWebSocket";
 import Layout from "./components/Layout";
@@ -14,20 +15,28 @@ function App() {
   useMarketWebSocket();
 
   if (!isLoggedIn) {
-    return <LoginPage />;
+    return (
+      <>
+        <Toaster position="top-right" toastOptions={{ duration: 3000, style: { background: "#1f2937", color: "#f3f4f6", border: "1px solid #374151" } }} />
+        <LoginPage />
+      </>
+    );
   }
 
   return (
-    <Layout>
-      <Routes>
-        <Route path="/" element={<DashboardPage />} />
-        <Route path="/option-chain" element={<OptionChainPage />} />
-        <Route path="/positions" element={<PositionsPage />} />
-        <Route path="/trades" element={<TradeHistoryPage />} />
-        <Route path="/archive" element={<ArchivePage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </Layout>
+    <>
+      <Toaster position="top-right" toastOptions={{ duration: 3000, style: { background: "#1f2937", color: "#f3f4f6", border: "1px solid #374151" } }} />
+      <Layout>
+        <Routes>
+          <Route path="/" element={<DashboardPage />} />
+          <Route path="/option-chain" element={<OptionChainPage />} />
+          <Route path="/positions" element={<PositionsPage />} />
+          <Route path="/trades" element={<TradeHistoryPage />} />
+          <Route path="/archive" element={<ArchivePage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Layout>
+    </>
   );
 }
 

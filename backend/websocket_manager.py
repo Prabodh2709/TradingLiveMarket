@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import threading
 from typing import Optional
@@ -13,12 +12,17 @@ from backend.smartapi_client import session as api_session
 
 logger = logging.getLogger(__name__)
 
+BATCH_INTERVAL_S = 0.3
+
 
 class MarketDataManager:
     """
     Bridges Angel One SmartWebSocketV2 feed to frontend WebSocket clients.
     Runs the SmartAPI WS in a background thread and broadcasts parsed
     market data to all connected FastAPI WebSocket clients.
+
+    Ticks are buffered and flushed every BATCH_INTERVAL_S seconds to avoid
+    per-tick broadcast overhead on high-frequency feeds.
     """
 
     NSE_FO = 2
@@ -31,6 +35,9 @@ class MarketDataManager:
         self._subscribed_tokens: list[dict] = []
         self._running = False
         self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._tick_buffer: dict[str, dict] = {}
+        self._buffer_lock = threading.Lock()
+        self._flush_task: Optional[asyncio.Task[None]] = None
 
     @property
     def latest_prices(self) -> dict[str, dict]:
@@ -81,10 +88,16 @@ class MarketDataManager:
         self._running = True
         self._thread = threading.Thread(target=self._run_ws, daemon=True)
         self._thread.start()
+
+        if self._loop and not self._flush_task:
+            self._flush_task = self._loop.create_task(self._flush_loop())
+
         logger.info("Market data WebSocket thread started")
 
     def stop(self) -> None:
         self._running = False
+        if self._flush_task and not self._flush_task.done():
+            self._flush_task.cancel()
         if self._sws:
             try:
                 self._sws.close_connection()
@@ -123,17 +136,6 @@ class MarketDataManager:
     def _on_open(self, wsapp) -> None:
         logger.info("Angel One WebSocket connected")
         if self._subscribed_tokens:
-            # #region agent log
-            import json as _dbg_json, time as _dbg_time
-            try:
-                with open("/Users/prabodh.shewalkar/Desktop/Personal/TradingLiveMarket/.cursor/debug-d38668.log", "a") as _f:
-                    _dbg_tokens_preview = []
-                    for tg in self._subscribed_tokens:
-                        _dbg_tokens_preview.append({"exchangeType": tg.get("exchangeType"), "token_count": len(tg.get("tokens", [])), "first_5_tokens": tg.get("tokens", [])[:5]})
-                    _f.write(_dbg_json.dumps({"sessionId":"d38668","hypothesisId":"H3","location":"websocket_manager.py:_on_open","message":"subscribing_tokens","data":{"token_groups":_dbg_tokens_preview},"timestamp":int(_dbg_time.time()*1000)}) + "\n")
-            except Exception:
-                pass
-            # #endregion
             self._sws.subscribe(
                 "sub1",
                 SmartWebSocketV2.SNAP_QUOTE,
@@ -175,23 +177,10 @@ class MarketDataManager:
             "sequence": message.get("sequence_number", 0),
         }
 
-        # #region agent log
-        import json as _dbg_json, time as _dbg_time
-        _dbg_tick_count = len(self._latest_prices)
-        if _dbg_tick_count < 5 or _dbg_tick_count % 50 == 0:
-            try:
-                with open("/Users/prabodh.shewalkar/Desktop/Personal/TradingLiveMarket/.cursor/debug-d38668.log", "a") as _f:
-                    _f.write(_dbg_json.dumps({"sessionId":"d38668","hypothesisId":"H1","location":"websocket_manager.py:_on_data","message":"snap_quote_tick","data":{"token":token,"ltp":ltp,"best_bid":best_bid,"best_ask":best_ask,"mid_price": round((best_bid+best_ask)/2, 2) if best_bid > 0 and best_ask > 0 else None,"ltp_vs_mid_diff": round((best_bid+best_ask)/2 - ltp, 2) if best_bid > 0 and best_ask > 0 else None,"oi":price_data["oi"],"tick_count":_dbg_tick_count},"timestamp":int(_dbg_time.time()*1000)}) + "\n")
-            except Exception:
-                pass
-        # #endregion
-
         self._latest_prices[token] = price_data
 
-        if self._loop and self._clients:
-            asyncio.run_coroutine_threadsafe(
-                self._broadcast(price_data), self._loop
-            )
+        with self._buffer_lock:
+            self._tick_buffer[token] = price_data
 
     def _on_error(self, wsapp, error) -> None:
         logger.error("Angel One WebSocket error: %s", error)
@@ -200,11 +189,23 @@ class MarketDataManager:
         logger.info("Angel One WebSocket closed")
         self._running = False
 
-    async def _broadcast(self, data: dict) -> None:
+    async def _flush_loop(self) -> None:
+        """Periodically drain the tick buffer and broadcast a single batch."""
+        while self._running:
+            await asyncio.sleep(BATCH_INTERVAL_S)
+            with self._buffer_lock:
+                if not self._tick_buffer:
+                    continue
+                batch = self._tick_buffer.copy()
+                self._tick_buffer.clear()
+            await self._broadcast_batch(batch)
+
+    async def _broadcast_batch(self, batch: dict[str, dict]) -> None:
         dead: list[WebSocket] = []
+        msg = {"type": "batch", "data": batch}
         for client in self._clients:
             try:
-                await client.send_json({"type": "tick", "data": data})
+                await client.send_json(msg)
             except Exception:
                 dead.append(client)
         for d in dead:

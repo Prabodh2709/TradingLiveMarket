@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Loader2 } from "lucide-react";
+import toast from "react-hot-toast";
 import { api } from "../lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -19,7 +20,7 @@ export default function ResetModal({ onClose }: Props) {
       setDone(true);
       queryClient.invalidateQueries();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Reset failed");
+      toast.error(err instanceof Error ? err.message : "Reset failed");
     } finally {
       setLoading(false);
     }
@@ -71,8 +72,9 @@ export default function ResetModal({ onClose }: Props) {
               <button
                 onClick={handleReset}
                 disabled={loading}
-                className="flex-1 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-lg py-2.5 text-sm font-medium"
+                className="flex-1 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-lg py-2.5 text-sm font-medium inline-flex items-center justify-center gap-2"
               >
+                {loading && <Loader2 size={16} className="animate-spin" />}
                 {loading ? "Resetting..." : "Confirm Reset"}
               </button>
             </div>

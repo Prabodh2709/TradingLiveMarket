@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { Archive, ChevronRight, ArrowLeft } from "lucide-react";
+import Spinner from "../components/Spinner";
 import type { HistoryDetail, HistoryMeta } from "../lib/types";
 
 export default function ArchivePage() {
@@ -12,11 +13,19 @@ export default function ArchivePage() {
     queryFn: api.system.history,
   });
 
-  const { data: detail } = useQuery({
+  const { data: detail, isLoading: detailLoading } = useQuery({
     queryKey: ["history-detail", selectedFolder],
     queryFn: () => api.system.historyDetail(selectedFolder!),
     enabled: !!selectedFolder,
   });
+
+  if (selectedFolder && detailLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Spinner size={24} label="Loading session details..." />
+      </div>
+    );
+  }
 
   if (selectedFolder && detail) {
     return <VersionDetail detail={detail} onBack={() => setSelectedFolder(null)} />;
@@ -27,8 +36,8 @@ export default function ArchivePage() {
       <h2 className="text-xl font-semibold mb-6">Archived Sessions</h2>
 
       {isLoading ? (
-        <div className="flex items-center justify-center h-64 text-gray-500">
-          Loading archives...
+        <div className="flex items-center justify-center h-64">
+          <Spinner size={24} label="Loading archives..." />
         </div>
       ) : !versions || versions.length === 0 ? (
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center text-gray-500">

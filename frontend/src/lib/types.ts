@@ -17,6 +17,7 @@ export interface Position {
   strike: number;
   option_type: "CE" | "PE";
   expiry: string;
+  side: "LONG" | "SHORT";
   qty: number;
   lot_size: number;
   avg_price: number;

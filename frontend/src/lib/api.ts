@@ -62,6 +62,20 @@ export const api = {
         "/api/trade/buy",
         { method: "POST", body: JSON.stringify(data) }
       ),
+    sellOpen: (data: {
+      symbol: string;
+      token: string;
+      name: string;
+      strike: number;
+      option_type: string;
+      expiry: string;
+      qty: number;
+      price: number;
+    }) =>
+      request<{ status: string; data: Record<string, unknown> }>(
+        "/api/trade/sell-open",
+        { method: "POST", body: JSON.stringify(data) }
+      ),
     sell: (data: { token: string; qty: number; price: number }) =>
       request<{ status: string; data: Record<string, unknown> }>(
         "/api/trade/sell",

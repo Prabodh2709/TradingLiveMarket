@@ -8,3 +8,4 @@ logs/
 *.egg-info/
 .venv/
 venv/
+.cursor/debug-*.log

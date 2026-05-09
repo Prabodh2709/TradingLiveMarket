@@ -13,6 +13,11 @@ class TradeAction(str, Enum):
     SELL = "SELL"
 
 
+class PositionSide(str, Enum):
+    LONG = "LONG"
+    SHORT = "SHORT"
+
+
 class OptionType(str, Enum):
     CE = "CE"
     PE = "PE"
@@ -47,6 +52,7 @@ class Position(BaseModel):
     strike: float
     option_type: OptionType
     expiry: str
+    side: PositionSide = PositionSide.LONG
     qty: int  # lots
     lot_size: int
     avg_price: float

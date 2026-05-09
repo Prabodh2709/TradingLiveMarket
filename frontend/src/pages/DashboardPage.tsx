@@ -8,6 +8,7 @@ import {
   TrendingDown,
   BarChart3,
   Briefcase,
+  Loader2,
 } from "lucide-react";
 
 function formatCurrency(val: number): string {
@@ -44,6 +45,7 @@ export default function DashboardPage() {
   if (isLoading || !portfolio) {
     return (
       <div className="flex items-center justify-center h-64 text-gray-500">
+        <Loader2 size={24} className="animate-spin mr-3" />
         Loading portfolio...
       </div>
     );

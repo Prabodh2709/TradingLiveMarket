@@ -7,6 +7,7 @@ import {
   Archive,
   LogOut,
   RotateCcw,
+  Loader2,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useAppStore } from "../store/useAppStore";
@@ -26,14 +27,17 @@ export default function Layout({ children }: { children: ReactNode }) {
   const setLoggedIn = useAppStore((s) => s.setLoggedIn);
   const clientCode = useAppStore((s) => s.clientCode);
   const [showReset, setShowReset] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const handleLogout = async () => {
+    setLoggingOut(true);
     try {
       await api.auth.logout();
     } catch {
       // proceed anyway
     }
     setLoggedIn(false);
+    setLoggingOut(false);
   };
 
   return (
@@ -74,10 +78,11 @@ export default function Layout({ children }: { children: ReactNode }) {
           </button>
           <button
             onClick={handleLogout}
-            className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 rounded-lg"
+            disabled={loggingOut}
+            className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <LogOut size={16} />
-            Logout
+            {loggingOut ? <Loader2 size={16} className="animate-spin" /> : <LogOut size={16} />}
+            {loggingOut ? "Logging out..." : "Logout"}
           </button>
         </div>
       </aside>

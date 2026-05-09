@@ -21,6 +21,7 @@ interface AppState {
   prices: Record<string, TickData>;
   updatePrice: (tick: TickData) => void;
   setPrices: (snapshot: Record<string, TickData>) => void;
+  mergePrices: (batch: Record<string, TickData>) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -47,4 +48,8 @@ export const useAppStore = create<AppState>((set) => ({
       prices: { ...state.prices, [tick.token]: tick },
     })),
   setPrices: (snapshot) => set({ prices: snapshot }),
+  mergePrices: (batch) =>
+    set((state) => ({
+      prices: { ...state.prices, ...batch },
+    })),
 }));

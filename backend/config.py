@@ -11,8 +11,8 @@ class Settings(BaseSettings):
     initial_balance: float = 700000.0
     data_dir: str = "./data"
 
-    nifty_lot_size: int = 25
-    banknifty_lot_size: int = 15
+    nifty_lot_size: int = 65
+    banknifty_lot_size: int = 30
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

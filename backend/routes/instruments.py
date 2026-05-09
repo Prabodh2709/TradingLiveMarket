@@ -20,16 +20,13 @@ async def option_chain(
 ):
     chain = get_option_chain(name, expiry)
     if not chain:
+        await fetch_instruments()
+        chain = get_option_chain(name, expiry)
+    if not chain:
         raise HTTPException(
             status_code=404,
-            detail=f"No option chain data for {name}. Try refreshing instruments first.",
+            detail=f"No option chain data for {name}. Could not load instruments.",
         )
-
-    # #region agent log
-    import json as _dbg_json, time as _dbg_time
-    _dbg_samples = []
-    _dbg_prices_snapshot = list(market_data.latest_prices.keys())[:10]
-    # #endregion
 
     for strike_key, strike_data in chain.get("strikes", {}).items():
         for opt_type in ("CE", "PE"):
@@ -37,18 +34,6 @@ async def option_chain(
                 token = strike_data[opt_type].get("token", "")
                 ltp = market_data.get_ltp(token)
                 strike_data[opt_type]["ltp"] = ltp
-                # #region agent log
-                if len(_dbg_samples) < 10:
-                    _dbg_samples.append({"strike": strike_key, "opt_type": opt_type, "token": token, "token_type": str(type(token)), "ltp": ltp, "symbol": strike_data[opt_type].get("symbol", "")})
-                # #endregion
-
-    # #region agent log
-    try:
-        with open("/Users/prabodh.shewalkar/Desktop/Personal/TradingLiveMarket/.cursor/debug-d38668.log", "a") as _f:
-            _f.write(_dbg_json.dumps({"sessionId":"d38668","hypothesisId":"H1","location":"instruments.py:option_chain","message":"chain_ltp_merge","data":{"name": name, "expiry": expiry, "sample_strikes": _dbg_samples, "latest_prices_keys_sample": _dbg_prices_snapshot, "total_latest_prices": len(market_data.latest_prices)},"timestamp":int(_dbg_time.time()*1000)}) + "\n")
-    except Exception:
-        pass
-    # #endregion
 
     index_token = get_index_token(name)
     chain["index_token"] = index_token
