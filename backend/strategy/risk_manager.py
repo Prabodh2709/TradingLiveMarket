@@ -6,6 +6,7 @@ from typing import Optional
 
 from backend.config import settings as app_settings
 from backend.db import store
+from backend.strategy.charges import estimate_margin
 from backend.strategy.config import strategy_settings
 from backend.strategy.models import (
     ActiveTrade,
@@ -46,6 +47,7 @@ def validate_trade(
         lambda: _check_duplicate_position(signal, state),
         lambda: _check_total_lots(state),
         lambda: _check_trade_cooldown(state),
+        lambda: _check_margin_available(signal),
     ):
         msg = check()
         if msg:
@@ -225,6 +227,32 @@ def _compute_position_size(entry_price: float, lot_size: int, instrument: str) -
 
     max_lots = int(max_risk / risk_per_lot)
     return max(1, min(max_lots, strategy_settings.max_lots_per_trade))
+
+
+def _check_margin_available(signal: TradeSignal) -> Optional[str]:
+    """Reject early if free capital cannot cover margin for even 1 lot."""
+    from backend.strategy.historical_data import get_spot_price
+
+    spot = get_spot_price(signal.instrument)
+    if not spot:
+        return None  # can't verify without spot; let execution-time check handle it
+
+    lot_size = (
+        app_settings.banknifty_lot_size
+        if signal.instrument == "BANKNIFTY"
+        else app_settings.nifty_lot_size
+    )
+
+    margin_1_lot = estimate_margin(spot, lot_size, 1, signal.instrument)
+    portfolio = store.load_portfolio()
+    free_capital = portfolio.balance - portfolio.margin_used
+
+    if margin_1_lot > free_capital:
+        return (
+            f"Insufficient margin: need ₹{margin_1_lot:,.0f} per lot, "
+            f"free capital ₹{free_capital:,.0f}"
+        )
+    return None
 
 
 def _parse_time(t_str: str) -> time:

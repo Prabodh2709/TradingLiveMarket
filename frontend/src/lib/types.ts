@@ -5,6 +5,8 @@ export interface Portfolio {
   unrealized_pnl: number;
   total_pnl: number;
   total_return_pct: number;
+  margin_used: number;
+  total_charges: number;
   positions: Position[];
   position_count: number;
 }

@@ -1,5 +1,5 @@
 """
-Realistic NSE F&O option charges for paper trading simulation.
+Realistic NSE F&O option charges and margin estimation for paper trading.
 
 Rate card (as of 2024-25):
   Brokerage       : Rs 20 flat per executed order
@@ -11,6 +11,8 @@ Rate card (as of 2024-25):
 """
 
 from __future__ import annotations
+
+from backend.strategy.config import strategy_settings
 
 BROKERAGE_PER_ORDER = 20.0
 STT_RATE = 0.000625
@@ -49,3 +51,18 @@ def compute_charges(turnover: float, side: str) -> dict[str, float]:
         "stamp": round(stamp, 2),
         "total": round(total, 2),
     }
+
+
+def estimate_margin(spot_price: float, lot_size: int, qty: int, instrument: str) -> float:
+    """
+    Approximate SPAN + Exposure margin required to sell index options.
+
+    Uses a configurable percentage of the contract notional value:
+        margin = spot_price * lot_size * qty * (margin_pct / 100)
+    """
+    if instrument.upper() == "BANKNIFTY":
+        pct = strategy_settings.margin_pct_banknifty
+    else:
+        pct = strategy_settings.margin_pct_nifty
+
+    return round(spot_price * lot_size * qty * (pct / 100), 2)

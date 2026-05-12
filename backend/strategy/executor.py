@@ -8,7 +8,7 @@ from typing import Optional
 from backend.config import settings as app_settings
 from backend.smartapi_client import session
 from backend.strategy.config import strategy_settings
-from backend.strategy.historical_data import resolve_ltp
+from backend.strategy.historical_data import get_spot_price, resolve_ltp
 from backend.strategy.models import ActiveTrade, ExitReason, TradePlan
 from backend.trading_engine import sell_option, sell_option_open
 
@@ -55,6 +55,8 @@ async def _paper_entry(plan: TradePlan) -> Optional[ActiveTrade]:
             else app_settings.nifty_lot_size
         )
 
+        spot = get_spot_price(plan.signal.instrument) or 0.0
+
         result = sell_option_open(
             symbol=plan.symbol,
             token=plan.token,
@@ -64,6 +66,7 @@ async def _paper_entry(plan: TradePlan) -> Optional[ActiveTrade]:
             expiry=plan.expiry,
             qty=plan.qty,
             price=plan.entry_price,
+            spot_price=spot,
         )
 
         active = ActiveTrade(

@@ -9,6 +9,8 @@ import {
   BarChart3,
   Briefcase,
   Loader2,
+  Receipt,
+  ShieldCheck,
 } from "lucide-react";
 
 function formatCurrency(val: number): string {
@@ -88,13 +90,27 @@ export default function DashboardPage() {
       color: "text-purple-400",
       bg: "bg-purple-500/10",
     },
+    {
+      label: "Total Charges",
+      value: `\u20B9${formatCurrency(portfolio.total_charges)}`,
+      icon: Receipt,
+      color: "text-yellow-400",
+      bg: "bg-yellow-500/10",
+    },
+    {
+      label: "Margin Used",
+      value: `\u20B9${formatCurrency(portfolio.margin_used)}`,
+      icon: ShieldCheck,
+      color: "text-cyan-400",
+      bg: "bg-cyan-500/10",
+    },
   ];
 
   return (
     <div>
       <h2 className="text-xl font-semibold mb-6">Dashboard</h2>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
         {cards.map((card) => (
           <div
             key={card.label}

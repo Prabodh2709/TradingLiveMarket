@@ -66,6 +66,7 @@ class Portfolio(BaseModel):
     balance: float = 700000.0
     initial_balance: float = 700000.0
     realized_pnl: float = 0.0
+    margin_used: float = 0.0
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 

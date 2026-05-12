@@ -6,7 +6,7 @@ from typing import Optional
 from backend.config import settings
 from backend.db.schema import OptionType, Position, PositionSide, Trade, TradeAction
 from backend.db import store
-from backend.strategy.charges import compute_charges
+from backend.strategy.charges import compute_charges, estimate_margin
 from backend.websocket_manager import market_data
 
 logger = logging.getLogger(__name__)
@@ -113,6 +113,7 @@ def sell_option_open(
     expiry: str,
     qty: int,
     price: float,
+    spot_price: float = 0.0,
 ) -> dict:
     """Open a short paper position (sell / write an option)."""
     existing = store.find_position(token)
@@ -123,6 +124,20 @@ def sell_option_open(
         )
 
     lot_size = _lot_size_for(name)
+
+    # Margin check: ensure sufficient free capital to cover SPAN + Exposure
+    required_margin = 0.0
+    if spot_price > 0:
+        required_margin = estimate_margin(spot_price, lot_size, qty, name)
+        portfolio = store.load_portfolio()
+        free_capital = portfolio.balance - portfolio.margin_used
+        if required_margin > free_capital:
+            raise ValueError(
+                f"Insufficient margin. Need ₹{required_margin:,.0f}, "
+                f"free capital ₹{free_capital:,.0f} "
+                f"(balance ₹{portfolio.balance:,.0f} - margin_used ₹{portfolio.margin_used:,.0f})"
+            )
+
     premium_received = qty * lot_size * price
     entry_charges = compute_charges(premium_received, "SELL")
 
@@ -142,6 +157,7 @@ def sell_option_open(
 
     portfolio = store.load_portfolio()
     portfolio.balance += premium_received - entry_charges["total"]
+    portfolio.margin_used += required_margin
     store.save_portfolio(portfolio)
     store.append_trade(trade)
 
@@ -236,6 +252,15 @@ def sell_option(
         portfolio = store.load_portfolio()
         portfolio.balance -= cost_to_close + exit_charges["total"]
         portfolio.realized_pnl += pnl
+
+        # Release margin proportional to lots being closed
+        if portfolio.margin_used > 0 and target.qty > 0:
+            margin_per_lot = portfolio.margin_used / max(
+                sum(p.qty for p in positions if p.side == PositionSide.SHORT), 1
+            )
+            released_margin = margin_per_lot * qty
+            portfolio.margin_used = max(0.0, portfolio.margin_used - released_margin)
+
         store.save_portfolio(portfolio)
         store.append_trade(trade)
 
@@ -298,6 +323,7 @@ def sell_option(
 def get_portfolio_summary() -> dict:
     portfolio = store.load_portfolio()
     positions = store.load_positions()
+    trades = store.load_trades()
 
     unrealized_pnl = 0.0
     enriched_positions = []
@@ -314,6 +340,7 @@ def get_portfolio_summary() -> dict:
         enriched_positions.append(p.model_dump())
 
     total_pnl = portfolio.realized_pnl + unrealized_pnl
+    total_charges = sum(t.charges for t in trades)
 
     return {
         "balance": portfolio.balance,
@@ -322,6 +349,8 @@ def get_portfolio_summary() -> dict:
         "unrealized_pnl": unrealized_pnl,
         "total_pnl": total_pnl,
         "total_return_pct": (total_pnl / portfolio.initial_balance) * 100,
+        "margin_used": portfolio.margin_used,
+        "total_charges": total_charges,
         "positions": enriched_positions,
         "position_count": len(positions),
     }

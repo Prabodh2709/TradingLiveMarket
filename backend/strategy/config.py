@@ -34,6 +34,10 @@ class StrategySettings(BaseSettings):
     min_risk_reward_ratio: float = 0.3
     min_time_between_trades_s: int = 900
 
+    # Margin (approx SPAN + Exposure as % of contract notional)
+    margin_pct_nifty: float = 15.0
+    margin_pct_banknifty: float = 18.0
+
     # Position management
     target_pct: float = 50.0
     stop_loss_multiplier: float = 2.0
