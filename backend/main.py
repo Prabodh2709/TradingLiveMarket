@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import asyncio
 import logging
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -6,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.routes import auth, instruments, trading, portfolio, system
 from backend.websocket_manager import market_data
+from backend.auto_squareoff import auto_squareoff_loop
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -14,8 +16,14 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Paper Trading System starting up")
+    sqoff_task = asyncio.create_task(auto_squareoff_loop())
     yield
-    logger.info("Shutting down – stopping market data feed")
+    logger.info("Shutting down – stopping market data feed and auto sq-off")
+    sqoff_task.cancel()
+    try:
+        await sqoff_task
+    except asyncio.CancelledError:
+        pass
     market_data.stop()
 
 

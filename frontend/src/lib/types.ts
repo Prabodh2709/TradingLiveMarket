@@ -43,6 +43,24 @@ export interface Trade {
   pnl: number | null;
 }
 
+export interface TradePair {
+  token: string;
+  symbol: string;
+  name: string;
+  strike: number;
+  option_type: "CE" | "PE";
+  expiry: string;
+  side: "LONG" | "SHORT";
+  qty: number;
+  lot_size: number;
+  entry_time: string;
+  entry_price: number;
+  exit_time: string | null;
+  exit_price: number | null;
+  pnl: number | null;
+  status: "OPEN" | "CLOSED";
+}
+
 export interface OptionStrike {
   CE?: OptionContract;
   PE?: OptionContract;

@@ -13,6 +13,7 @@ class Settings(BaseSettings):
 
     nifty_lot_size: int = 65
     banknifty_lot_size: int = 30
+    auto_sqoff_time: str = "14:55"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
