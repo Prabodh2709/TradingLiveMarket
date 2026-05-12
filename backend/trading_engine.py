@@ -39,10 +39,11 @@ def buy_option(
     portfolio = store.load_portfolio()
     lot_size = _lot_size_for(name)
     total_cost = qty * lot_size * price
+    entry_charges = compute_charges(total_cost, "BUY")
 
-    if total_cost > portfolio.balance:
+    if total_cost + entry_charges["total"] > portfolio.balance:
         raise ValueError(
-            f"Insufficient balance. Need ₹{total_cost:,.2f}, "
+            f"Insufficient balance. Need ₹{total_cost + entry_charges['total']:,.2f}, "
             f"available ₹{portfolio.balance:,.2f}"
         )
 
@@ -57,9 +58,10 @@ def buy_option(
         qty=qty,
         lot_size=lot_size,
         price=price,
+        charges=entry_charges["total"],
     )
 
-    portfolio.balance -= total_cost
+    portfolio.balance -= total_cost + entry_charges["total"]
     store.save_portfolio(portfolio)
     store.append_trade(trade)
 
@@ -73,6 +75,7 @@ def buy_option(
                     (p.avg_price * p.qty + price * qty) / total_qty
                 )
                 p.qty = total_qty
+                p.entry_charges += entry_charges["total"]
                 break
         store.save_positions(positions)
     else:
@@ -87,12 +90,16 @@ def buy_option(
             lot_size=lot_size,
             avg_price=price,
             current_price=price,
+            entry_charges=entry_charges["total"],
         )
         positions = store.load_positions()
         positions.append(pos)
         store.save_positions(positions)
 
-    logger.info("BUY %d lots %s @ %.2f (₹%.2f)", qty, symbol, price, total_cost)
+    logger.info(
+        "BUY %d lots %s @ %.2f (₹%.2f, charges=₹%.2f)",
+        qty, symbol, price, total_cost, entry_charges["total"],
+    )
     return {
         "trade_id": trade.id,
         "action": "BUY",
@@ -170,6 +177,7 @@ def sell_option_open(
                     (p.avg_price * p.qty + price * qty) / total_qty
                 )
                 p.qty = total_qty
+                p.entry_charges += entry_charges["total"]
                 break
         store.save_positions(positions)
     else:
@@ -185,6 +193,7 @@ def sell_option_open(
             lot_size=lot_size,
             avg_price=price,
             current_price=price,
+            entry_charges=entry_charges["total"],
         )
         positions = store.load_positions()
         positions.append(pos)
@@ -232,7 +241,8 @@ def sell_option(
         cost_to_close = qty * lot_size * price
         premium_collected = qty * lot_size * target.avg_price
         exit_charges = compute_charges(cost_to_close, "BUY")
-        pnl = premium_collected - cost_to_close - exit_charges["total"]
+        proportional_entry_charges = target.entry_charges * (qty / target.qty) if target.qty > 0 else 0.0
+        pnl = premium_collected - cost_to_close - proportional_entry_charges - exit_charges["total"]
 
         trade = Trade(
             symbol=target.symbol,
@@ -264,14 +274,18 @@ def sell_option(
         store.save_portfolio(portfolio)
         store.append_trade(trade)
 
+        target.entry_charges -= proportional_entry_charges
+
         logger.info(
-            "BUY-CLOSE %d lots %s @ %.2f  P&L=₹%.2f (charges=₹%.2f)",
-            qty, target.symbol, price, pnl, exit_charges["total"],
+            "BUY-CLOSE %d lots %s @ %.2f  P&L=₹%.2f (entry_charges=₹%.2f, exit_charges=₹%.2f)",
+            qty, target.symbol, price, pnl, proportional_entry_charges, exit_charges["total"],
         )
     else:
         total_value = qty * lot_size * price
         cost_basis = qty * lot_size * target.avg_price
-        pnl = total_value - cost_basis
+        exit_charges = compute_charges(total_value, "SELL")
+        proportional_entry_charges = target.entry_charges * (qty / target.qty) if target.qty > 0 else 0.0
+        pnl = total_value - cost_basis - proportional_entry_charges - exit_charges["total"]
 
         trade = Trade(
             symbol=target.symbol,
@@ -285,17 +299,20 @@ def sell_option(
             lot_size=lot_size,
             price=price,
             pnl=pnl,
+            charges=exit_charges["total"],
         )
 
         portfolio = store.load_portfolio()
-        portfolio.balance += total_value
+        portfolio.balance += total_value - exit_charges["total"]
         portfolio.realized_pnl += pnl
         store.save_portfolio(portfolio)
         store.append_trade(trade)
 
+        target.entry_charges -= proportional_entry_charges
+
         logger.info(
-            "SELL-CLOSE %d lots %s @ %.2f  P&L=₹%.2f",
-            qty, target.symbol, price, pnl,
+            "SELL-CLOSE %d lots %s @ %.2f  P&L=₹%.2f (entry_charges=₹%.2f, exit_charges=₹%.2f)",
+            qty, target.symbol, price, pnl, proportional_entry_charges, exit_charges["total"],
         )
 
     if qty >= target.qty:

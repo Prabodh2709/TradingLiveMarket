@@ -59,6 +59,7 @@ class Position(BaseModel):
     avg_price: float
     current_price: float = 0.0
     unrealized_pnl: float = 0.0
+    entry_charges: float = 0.0
     opened_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
