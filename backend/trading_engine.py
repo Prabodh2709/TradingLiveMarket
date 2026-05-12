@@ -6,6 +6,7 @@ from typing import Optional
 from backend.config import settings
 from backend.db.schema import OptionType, Position, PositionSide, Trade, TradeAction
 from backend.db import store
+from backend.strategy.charges import compute_charges
 from backend.websocket_manager import market_data
 
 logger = logging.getLogger(__name__)
@@ -123,6 +124,7 @@ def sell_option_open(
 
     lot_size = _lot_size_for(name)
     premium_received = qty * lot_size * price
+    entry_charges = compute_charges(premium_received, "SELL")
 
     trade = Trade(
         symbol=symbol,
@@ -135,10 +137,11 @@ def sell_option_open(
         qty=qty,
         lot_size=lot_size,
         price=price,
+        charges=entry_charges["total"],
     )
 
     portfolio = store.load_portfolio()
-    portfolio.balance += premium_received
+    portfolio.balance += premium_received - entry_charges["total"]
     store.save_portfolio(portfolio)
     store.append_trade(trade)
 
@@ -172,8 +175,8 @@ def sell_option_open(
         store.save_positions(positions)
 
     logger.info(
-        "SELL-OPEN %d lots %s @ %.2f (₹%.2f premium)",
-        qty, symbol, price, premium_received,
+        "SELL-OPEN %d lots %s @ %.2f (₹%.2f premium, charges=₹%.2f)",
+        qty, symbol, price, premium_received, entry_charges["total"],
     )
     return {
         "trade_id": trade.id,
@@ -212,7 +215,8 @@ def sell_option(
     if target.side == PositionSide.SHORT:
         cost_to_close = qty * lot_size * price
         premium_collected = qty * lot_size * target.avg_price
-        pnl = premium_collected - cost_to_close
+        exit_charges = compute_charges(cost_to_close, "BUY")
+        pnl = premium_collected - cost_to_close - exit_charges["total"]
 
         trade = Trade(
             symbol=target.symbol,
@@ -226,17 +230,18 @@ def sell_option(
             lot_size=lot_size,
             price=price,
             pnl=pnl,
+            charges=exit_charges["total"],
         )
 
         portfolio = store.load_portfolio()
-        portfolio.balance -= cost_to_close
+        portfolio.balance -= cost_to_close + exit_charges["total"]
         portfolio.realized_pnl += pnl
         store.save_portfolio(portfolio)
         store.append_trade(trade)
 
         logger.info(
-            "BUY-CLOSE %d lots %s @ %.2f  P&L=₹%.2f",
-            qty, target.symbol, price, pnl,
+            "BUY-CLOSE %d lots %s @ %.2f  P&L=₹%.2f (charges=₹%.2f)",
+            qty, target.symbol, price, pnl, exit_charges["total"],
         )
     else:
         total_value = qty * lot_size * price

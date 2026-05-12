@@ -45,12 +45,13 @@ function pairTrades(trades: Trade[]): TradePair[] {
         exit_time: trade.timestamp,
         exit_price: trade.price,
         pnl: trade.pnl,
+        charges: (entryTrade?.charges ?? 0) + (trade.charges ?? 0),
         status: "CLOSED",
       });
     }
   }
 
-  for (const [, bucket] of openEntries) {
+    for (const [, bucket] of openEntries) {
     for (const trade of bucket) {
       pairs.push({
         token: trade.token,
@@ -67,6 +68,7 @@ function pairTrades(trades: Trade[]): TradePair[] {
         exit_time: null,
         exit_price: null,
         pnl: null,
+        charges: trade.charges ?? 0,
         status: "OPEN",
       });
     }
@@ -139,6 +141,7 @@ export default function TradeHistoryPage() {
                   <th className="text-right px-5 py-3 font-medium">Entry Price</th>
                   <th className="text-left px-5 py-3 font-medium">Exit Time</th>
                   <th className="text-right px-5 py-3 font-medium">Exit Price</th>
+                  <th className="text-right px-5 py-3 font-medium">Charges</th>
                   <th className="text-right px-5 py-3 font-medium">P&L</th>
                   <th className="text-center px-5 py-3 font-medium">Status</th>
                 </tr>
@@ -194,6 +197,13 @@ export default function TradeHistoryPage() {
                     <td className="text-right px-5 py-3 font-mono">
                       {pair.exit_price != null ? (
                         <>&#8377;{pair.exit_price.toFixed(2)}</>
+                      ) : (
+                        <span className="text-gray-600">--</span>
+                      )}
+                    </td>
+                    <td className="text-right px-5 py-3 font-mono text-yellow-500/80 text-xs">
+                      {pair.charges > 0 ? (
+                        <>&#8377;{pair.charges.toFixed(2)}</>
                       ) : (
                         <span className="text-gray-600">--</span>
                       )}

@@ -19,22 +19,26 @@ A full-stack paper trading system for Nifty and BankNifty options using Angel On
 
 ## Setup
 
-### 1. Environment Variables
+### 1. Environment Variables (Required)
 
-Copy `.env.example` to `.env` and fill in your Angel One credentials:
+A `.env` file with your Angel One SmartAPI credentials is **required** to run the application. Without it, the backend will not be able to authenticate or fetch live market data.
+
+Copy `.env.example` to `.env` and fill in your credentials:
 
 ```bash
 cp .env.example .env
 ```
 
-| Variable | Description |
-|---|---|
-| `ANGEL_API_KEY` | Your SmartAPI app key |
-| `ANGEL_CLIENT_CODE` | Your Angel One client ID |
-| `ANGEL_PIN` | Your trading PIN |
-| `ANGEL_TOTP_SECRET` | Your TOTP secret (for auto-generation) |
-| `INITIAL_BALANCE` | Starting balance (default: 700000) |
-| `DATA_DIR` | Data storage path (default: ./data) |
+| Variable | Required | Description |
+|---|---|---|
+| `ANGEL_API_KEY` | Yes | Your SmartAPI app key (from smartapi.angelone.in) |
+| `ANGEL_CLIENT_CODE` | Yes | Your Angel One client ID |
+| `ANGEL_PIN` | Yes | Your trading PIN |
+| `ANGEL_TOTP_SECRET` | Yes | Your TOTP secret for auto-generating login OTPs |
+| `INITIAL_BALANCE` | No | Starting paper-trade balance (default: `700000`) |
+| `DATA_DIR` | No | Data storage path (default: `./data`) |
+
+> **Note:** Never commit your `.env` file to version control. It is already listed in `.gitignore`.
 
 ### 2. Backend (Python venv)
 

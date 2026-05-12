@@ -5,7 +5,7 @@ import logging
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.routes import auth, instruments, trading, portfolio, system
+from backend.routes import auth, instruments, trading, portfolio, system, strategy
 from backend.websocket_manager import market_data
 from backend.auto_squareoff import auto_squareoff_loop
 
@@ -47,6 +47,7 @@ app.include_router(instruments.router)
 app.include_router(trading.router)
 app.include_router(portfolio.router)
 app.include_router(system.router)
+app.include_router(strategy.router)
 
 
 @app.websocket("/ws/market-data")

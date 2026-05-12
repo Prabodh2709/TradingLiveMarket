@@ -8,6 +8,7 @@ import {
   LogOut,
   RotateCcw,
   Loader2,
+  Bot,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useAppStore } from "../store/useAppStore";
@@ -16,6 +17,7 @@ import ResetModal from "./ResetModal";
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/strategy", label: "Auto Strategy", icon: Bot },
   { to: "/option-chain", label: "Option Chain", icon: Table2 },
   { to: "/positions", label: "Positions", icon: Briefcase },
   { to: "/trades", label: "Trade History", icon: History },

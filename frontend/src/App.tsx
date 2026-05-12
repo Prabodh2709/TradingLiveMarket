@@ -9,6 +9,7 @@ import OptionChainPage from "./pages/OptionChainPage";
 import PositionsPage from "./pages/PositionsPage";
 import TradeHistoryPage from "./pages/TradeHistoryPage";
 import ArchivePage from "./pages/ArchivePage";
+import StrategyPage from "./pages/StrategyPage";
 
 function App() {
   const isLoggedIn = useAppStore((s) => s.isLoggedIn);
@@ -32,6 +33,7 @@ function App() {
           <Route path="/option-chain" element={<OptionChainPage />} />
           <Route path="/positions" element={<PositionsPage />} />
           <Route path="/trades" element={<TradeHistoryPage />} />
+          <Route path="/strategy" element={<StrategyPage />} />
           <Route path="/archive" element={<ArchivePage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

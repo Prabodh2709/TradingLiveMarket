@@ -104,4 +104,51 @@ export const api = {
     historyDetail: (folder: string) =>
       request<import("./types").HistoryDetail>(`/api/system/history/${folder}`),
   },
+
+  strategy: {
+    start: () =>
+      request<{ status: string; data: { status: string; started_at?: string } }>(
+        "/api/strategy/start",
+        { method: "POST" }
+      ),
+    stop: (close_positions = false) =>
+      request<{ status: string; data: { status: string; stopped_at?: string } }>(
+        "/api/strategy/stop",
+        { method: "POST", body: JSON.stringify({ close_positions }) }
+      ),
+    kill: () =>
+      request<{ status: string; data: { status: string } }>(
+        "/api/strategy/kill",
+        { method: "POST" }
+      ),
+    status: () =>
+      request<{ status: string; data: import("./types").StrategyStatus }>(
+        "/api/strategy/status"
+      ),
+    config: () =>
+      request<{ status: string; data: import("./types").StrategyConfig }>(
+        "/api/strategy/config"
+      ),
+    updateConfig: (data: Partial<import("./types").StrategyConfig>) =>
+      request<{ status: string; data: import("./types").StrategyConfig }>(
+        "/api/strategy/config",
+        { method: "PUT", body: JSON.stringify(data) }
+      ),
+    signals: () =>
+      request<{ status: string; data: import("./types").StrategySignal[] }>(
+        "/api/strategy/signals"
+      ),
+    log: (limit = 50) =>
+      request<{ status: string; data: import("./types").StrategyLogEntry[] }>(
+        `/api/strategy/log?limit=${limit}`
+      ),
+    positions: () =>
+      request<{ status: string; data: import("./types").StrategyActiveTrade[] }>(
+        "/api/strategy/positions"
+      ),
+    analysis: () =>
+      request<{ status: string; data: Record<string, import("./types").AnalysisSnapshot> }>(
+        "/api/strategy/analysis"
+      ),
+  },
 };

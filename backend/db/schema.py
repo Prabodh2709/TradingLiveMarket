@@ -38,6 +38,7 @@ class Trade(BaseModel):
     price: float
     total_value: float = 0.0
     pnl: Optional[float] = None  # set on exit trades
+    charges: float = 0.0
 
     def model_post_init(self, __context) -> None:
         if self.total_value == 0.0:
