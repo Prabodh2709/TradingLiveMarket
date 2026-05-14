@@ -10,6 +10,7 @@ from backend.strategy.charges import estimate_margin
 from backend.strategy.config import strategy_settings
 from backend.strategy.models import (
     ActiveTrade,
+    GreeksData,
     SignalAction,
     StrategyState,
     TradePlan,
@@ -64,10 +65,17 @@ def compute_trade_plan(
     option_type: str,
     entry_price: float,
     lot_size: int,
+    greeks: Optional[GreeksData] = None,
 ) -> Optional[TradePlan]:
     """
-    Build a TradePlan with target, SL, and position sizing.
+    Build a TradePlan with target, multi-factor SL, and position sizing.
     Returns None if risk/reward is unacceptable.
+
+    SL is the **tightest** (lowest) of four factors:
+      1. Capital-based:   max risk % of account per trade
+      2. Premium multiplier:  entry * stop_loss_multiplier
+      3. Greeks-based:    delta * ATR projected premium move
+      4. Absolute cap:    hard rupee limit per trade
     """
     qty = _compute_position_size(entry_price, lot_size, signal.instrument)
 
@@ -76,7 +84,10 @@ def compute_trade_plan(
         return None
 
     target_price = entry_price * (1 - strategy_settings.target_pct / 100)
-    sl_price = entry_price * strategy_settings.stop_loss_multiplier
+
+    sl_price = _compute_multi_factor_sl(
+        entry_price, qty, lot_size, signal, greeks,
+    )
 
     potential_profit = (entry_price - target_price) * qty * lot_size
     potential_loss = (sl_price - entry_price) * qty * lot_size
@@ -107,6 +118,59 @@ def compute_trade_plan(
         risk_reward_ratio=round(rr_ratio, 2),
         max_loss=round(potential_loss, 2),
     )
+
+
+def _compute_multi_factor_sl(
+    entry_price: float,
+    qty: int,
+    lot_size: int,
+    signal: TradeSignal,
+    greeks: Optional[GreeksData],
+) -> float:
+    """Compute stop-loss as the tightest of multiple factors."""
+    candidates: list[tuple[float, str]] = []
+
+    # Factor 1: Premium multiplier (existing baseline)
+    sl_premium = entry_price * strategy_settings.stop_loss_multiplier
+    candidates.append((sl_premium, "premium_multiplier"))
+
+    # Factor 2: Capital-based — max risk % of account balance
+    portfolio = store.load_portfolio()
+    max_risk_amount = portfolio.initial_balance * (
+        strategy_settings.max_risk_per_trade_pct / 100
+    )
+    total_qty = qty * lot_size
+    if total_qty > 0:
+        sl_capital = entry_price + (max_risk_amount / total_qty)
+        candidates.append((sl_capital, "capital_risk_pct"))
+
+    # Factor 3: Absolute rupee cap
+    if strategy_settings.max_loss_per_trade_amount > 0 and total_qty > 0:
+        sl_abs = entry_price + (
+            strategy_settings.max_loss_per_trade_amount / total_qty
+        )
+        candidates.append((sl_abs, "absolute_cap"))
+
+    # Factor 4: Greeks-based — delta * ATR projected adverse move
+    atr = 0.0
+    if signal.price_action:
+        atr = signal.price_action.atr
+    if greeks and atr > 0 and abs(greeks.delta) > 0:
+        sl_greeks = entry_price + abs(greeks.delta) * atr
+        candidates.append((sl_greeks, "greeks_atr"))
+
+    # Pick the tightest (lowest SL for a short-premium position means
+    # the trade gets stopped out earliest, limiting loss)
+    best_sl, best_label = min(candidates, key=lambda x: x[0])
+
+    logger.info(
+        "Multi-factor SL for entry=%.2f: chosen=%.2f (%s) | all=%s",
+        entry_price,
+        best_sl,
+        best_label,
+        ", ".join(f"{lbl}={val:.2f}" for val, lbl in candidates),
+    )
+    return best_sl
 
 
 def check_circuit_breaker(state: StrategyState) -> bool:

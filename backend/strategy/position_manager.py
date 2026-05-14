@@ -5,8 +5,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from backend.strategy.config import strategy_settings
-from backend.strategy.historical_data import resolve_ltp
-from backend.strategy.models import ActiveTrade, ExitReason
+from backend.strategy.greeks import fetch_greeks_for_strike
+from backend.strategy.historical_data import resolve_ltp, get_spot_price
+from backend.strategy.models import ActiveTrade, ExitReason, GreeksData
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,11 @@ def _evaluate_exit(trade: ActiveTrade) -> Optional[ExitReason]:
             )
             return ExitReason.STOP_LOSS_HIT
 
+    # Greeks deterioration: delta going too deep ITM or IV spiking
+    greeks_exit = _check_greeks_deterioration(trade)
+    if greeks_exit:
+        return greeks_exit
+
     # Time-based exit
     if _should_time_exit():
         return ExitReason.TIME_EXIT
@@ -103,17 +109,64 @@ def _evaluate_exit(trade: ActiveTrade) -> Optional[ExitReason]:
     return None
 
 
+def _check_greeks_deterioration(trade: ActiveTrade) -> Optional[ExitReason]:
+    """Exit if current Greeks have deteriorated beyond safety thresholds."""
+    plan = trade.trade_plan
+    spot = get_spot_price(plan.signal.instrument)
+    if not spot or trade.current_price <= 0:
+        return None
+
+    try:
+        current_greeks = fetch_greeks_for_strike(
+            plan.signal.instrument,
+            plan.expiry,
+            plan.strike,
+            plan.option_type,
+            spot,
+            trade.current_price,
+        )
+    except Exception as e:
+        logger.debug("Greeks fetch failed during position check for %s: %s", plan.symbol, e)
+        return None
+
+    # Delta danger: option moving deep ITM
+    if abs(current_greeks.delta) > strategy_settings.sl_delta_danger_threshold:
+        logger.warning(
+            "GREEKS EXIT for %s: delta=%.3f exceeds threshold %.2f",
+            plan.symbol, current_greeks.delta,
+            strategy_settings.sl_delta_danger_threshold,
+        )
+        return ExitReason.GREEKS_DETERIORATION
+
+    # IV spike: vega working against us
+    if trade.entry_iv > 0:
+        current_iv = current_greeks.iv
+        iv_change_pct = ((current_iv - trade.entry_iv) / trade.entry_iv) * 100
+        if iv_change_pct > strategy_settings.sl_iv_spike_exit_pct:
+            logger.warning(
+                "GREEKS EXIT for %s: IV spiked %.1f%% (%.1f -> %.1f), "
+                "threshold %.1f%%",
+                plan.symbol, iv_change_pct, trade.entry_iv, current_iv,
+                strategy_settings.sl_iv_spike_exit_pct,
+            )
+            return ExitReason.GREEKS_DETERIORATION
+
+    return None
+
+
 def _update_trailing_sl(trade: ActiveTrade) -> None:
-    """Update trailing stop-loss based on highest profit achieved."""
+    """Update trailing stop-loss with dynamic width based on current theta.
+
+    Higher theta (faster decay) -> tighter trail to lock in profit.
+    Lower theta (slower decay)  -> wider trail to give room.
+    """
     entry_price = trade.entry_filled_price or trade.trade_plan.entry_price
     trigger_pct = strategy_settings.trailing_sl_trigger_pct
-    trail_pct = strategy_settings.trailing_sl_pct
 
     premium_decay_pct = ((entry_price - trade.current_price) / entry_price) * 100
 
     if premium_decay_pct >= trigger_pct:
-        # Trail SL to lock in some profit
-        # SL moves to entry - (trail_pct% of entry from current)
+        trail_pct = _dynamic_trail_pct(trade)
         trail_amount = entry_price * (trail_pct / 100)
         new_sl = trade.current_price + trail_amount
 
@@ -121,9 +174,42 @@ def _update_trailing_sl(trade: ActiveTrade) -> None:
             old_sl = trade.trailing_sl_price or trade.trade_plan.stop_loss_price
             trade.trailing_sl_price = round(new_sl, 2)
             logger.debug(
-                "Trailing SL updated for %s: %.2f -> %.2f (current=%.2f)",
-                trade.trade_plan.symbol, old_sl, new_sl, trade.current_price,
+                "Trailing SL updated for %s: %.2f -> %.2f (current=%.2f, trail_pct=%.1f%%)",
+                trade.trade_plan.symbol, old_sl, new_sl,
+                trade.current_price, trail_pct,
             )
+
+
+def _dynamic_trail_pct(trade: ActiveTrade) -> float:
+    """Compute trailing SL width % based on current theta.
+
+    Uses the configured trailing_sl_pct as the baseline and adjusts:
+    - High theta (|theta| > 2): tighten to 60% of baseline (decay is fast, lock profit)
+    - Medium theta (0.5-2):     use baseline as-is
+    - Low theta (|theta| < 0.5): widen to 150% of baseline (decay is slow, give room)
+    """
+    base_pct = strategy_settings.trailing_sl_pct
+    plan = trade.trade_plan
+
+    try:
+        spot = get_spot_price(plan.signal.instrument)
+        if not spot or trade.current_price <= 0:
+            return base_pct
+
+        greeks = fetch_greeks_for_strike(
+            plan.signal.instrument, plan.expiry, plan.strike,
+            plan.option_type, spot, trade.current_price,
+        )
+        abs_theta = abs(greeks.theta)
+
+        if abs_theta > 2.0:
+            return base_pct * 0.6
+        elif abs_theta < 0.5:
+            return base_pct * 1.5
+        return base_pct
+
+    except Exception:
+        return base_pct
 
 
 def _should_time_exit() -> bool:

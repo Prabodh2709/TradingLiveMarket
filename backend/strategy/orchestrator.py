@@ -22,6 +22,7 @@ from backend.strategy.models import (
     TradePlan,
     TradeSignal,
 )
+from backend.strategy.greeks import fetch_greeks_for_strike, is_decay_favorable
 from backend.strategy.order_flow import analyze_order_flow
 from backend.strategy.position_manager import check_exits, update_prices, calculate_exit_price
 from backend.strategy.price_action import analyze_price_action
@@ -350,7 +351,20 @@ async def _execute_single_leg(
         _log_decision(instrument, "TRADE_REJECTED", f"Premium ₹{entry_price:.2f} above maximum ₹{strategy_settings.max_premium}")
         return
 
-    # Compute trade plan with risk checks
+    # Fetch Greeks and verify decay is favorable before selling
+    spot_price = get_spot_price(instrument) or 0.0
+    greeks = fetch_greeks_for_strike(
+        instrument, signal.expiry, strike, option_type, spot_price, entry_price,
+    )
+    decay_ok, decay_reason = is_decay_favorable(greeks, option_type)
+    if not decay_ok:
+        _log_decision(
+            instrument, "TRADE_REJECTED",
+            f"Decay unfavorable for {symbol}: {decay_reason}",
+        )
+        return
+
+    # Compute trade plan with risk checks + Greeks-informed SL
     plan = compute_trade_plan(
         signal=signal,
         token=token,
@@ -359,6 +373,7 @@ async def _execute_single_leg(
         option_type=option_type,
         entry_price=entry_price,
         lot_size=lot_size,
+        greeks=greeks,
     )
 
     if not plan:
@@ -368,6 +383,8 @@ async def _execute_single_leg(
     # Execute!
     active_trade = await execute_entry(plan)
     if active_trade:
+        active_trade.entry_iv = greeks.iv
+        active_trade.entry_delta = greeks.delta
         _state.active_trades.append(active_trade)
         _state.total_trades_today += 1
         _state.last_trade_time = datetime.now(IST).isoformat()
@@ -375,7 +392,9 @@ async def _execute_single_leg(
             instrument,
             "TRADE_PLACED",
             f"SELL {plan.qty}x {symbol} @ ₹{entry_price:.2f} | "
-            f"Target=₹{plan.target_price:.2f} SL=₹{plan.stop_loss_price:.2f} RR={plan.risk_reward_ratio:.2f}",
+            f"Target=₹{plan.target_price:.2f} SL=₹{plan.stop_loss_price:.2f} "
+            f"RR={plan.risk_reward_ratio:.2f} | "
+            f"Delta={greeks.delta:.3f} Theta={greeks.theta:.3f} IV={greeks.iv:.1f}%",
             signal=signal,
         )
 

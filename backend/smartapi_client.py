@@ -100,5 +100,29 @@ class SmartAPISession:
             logger.error("LTP fetch failed for %s: %s", symbol, e)
         return None
 
+    def get_option_greeks(self, name: str, expiry_date: str) -> Optional[list[dict]]:
+        """Fetch option Greeks from Angel One's Option Greeks API.
+
+        Args:
+            name: Underlying name (e.g. "NIFTY", "BANKNIFTY").
+            expiry_date: Expiry in Angel format (e.g. "29MAY2026").
+
+        Returns:
+            List of dicts with delta, gamma, theta, vega, iv per strike,
+            or None on failure.
+        """
+        if not self._obj or not self._is_logged_in:
+            return None
+        try:
+            payload = {"name": name, "expirydate": expiry_date}
+            resp = self._obj._postRequest(
+                "api.market.optiongreeks", payload
+            )
+            if resp and resp.get("status") is not False and resp.get("data"):
+                return resp["data"]
+        except Exception as e:
+            logger.warning("Option Greeks API failed for %s %s: %s", name, expiry_date, e)
+        return None
+
 
 session = SmartAPISession()

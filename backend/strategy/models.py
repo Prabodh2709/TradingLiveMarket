@@ -35,6 +35,7 @@ class ExitReason(str, Enum):
     EXPIRY_PROTECTION = "EXPIRY_PROTECTION"
     KILL_SWITCH = "KILL_SWITCH"
     MANUAL = "MANUAL"
+    GREEKS_DETERIORATION = "GREEKS_DETERIORATION"
 
 
 class Candle(BaseModel):
@@ -82,6 +83,14 @@ class SentimentSignal(BaseModel):
     confidence: float = 0.0
 
 
+class GreeksData(BaseModel):
+    delta: float = 0.0
+    gamma: float = 0.0
+    theta: float = 0.0
+    vega: float = 0.0
+    iv: float = 0.0
+
+
 class TradeSignal(BaseModel):
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
     instrument: str  # NIFTY or BANKNIFTY
@@ -122,6 +131,8 @@ class ActiveTrade(BaseModel):
     highest_profit: float = 0.0
     trailing_sl_price: Optional[float] = None
     status: str = "OPEN"  # OPEN, CLOSED
+    entry_iv: float = 0.0
+    entry_delta: float = 0.0
 
 
 class DecisionLogEntry(BaseModel):

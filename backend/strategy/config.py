@@ -66,6 +66,18 @@ class StrategySettings(BaseSettings):
     vix_pause_threshold: float = 20.0
     vix_spike_pct: float = 20.0
 
+    # Greeks / decay gate thresholds
+    max_delta_for_sell: float = 0.40
+    max_gamma_for_sell: float = 0.01
+    min_theta_for_sell: float = 0.5
+    max_iv_for_sell: float = 50.0
+    risk_free_rate: float = 7.0
+
+    # Smart SL parameters
+    max_loss_per_trade_amount: float = 5000.0
+    sl_delta_danger_threshold: float = 0.55
+    sl_iv_spike_exit_pct: float = 30.0
+
     model_config = {"env_prefix": "STRATEGY_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
